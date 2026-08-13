@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="A2A Agent Registry">
+  <rect width="64" height="64" rx="14" fill="#161a1e"/>
+  <path d="M17 44 28.5 18h7L47 44h-7l-2.7-6.5H26.7L24 44h-7Zm12-12h5l-2.5-6.2L29 32Z" fill="#f5efe5"/>
+  <circle cx="48" cy="17" r="5" fill="#d85c4a"/>
+</svg>
