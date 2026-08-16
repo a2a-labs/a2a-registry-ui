@@ -15,12 +15,6 @@ export class RegistryApiError extends Error {
   }
 }
 
-function authHeaders(): HeadersInit {
-  const token = window.localStorage.getItem("a2a-registry-write-token")?.trim() ??
-    (import.meta.env.VITE_REGISTRY_WRITE_TOKEN as string | undefined)?.trim();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -28,7 +22,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         Accept: "application/json",
-        ...authHeaders(),
         ...init?.headers,
       },
     });
@@ -70,13 +63,3 @@ export async function getAgent(id: string): Promise<RegisteredAgent> {
   const response = await request<{ agent: RegisteredAgent }>(`/v1/agents/${encodeURIComponent(id)}`);
   return response.agent;
 }
-
-export async function blockAgent(id: string, token?: string): Promise<void> {
-  const trimmed = token?.trim();
-  if (trimmed) window.localStorage.setItem("a2a-registry-write-token", trimmed);
-  await request<void>(`/v1/agents/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: trimmed ? { Authorization: `Bearer ${trimmed}` } : undefined,
-  });
-}
-
