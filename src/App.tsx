@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { getAgent, listAgents, RegistryApiError } from "./api";
-import { MOCK_AGENTS } from "./mockAgents";
+import { getAgent, listAgents } from "./api";
 import type { AgentActivity, AgentCard, AgentInstance, RegisteredAgent } from "./types";
 import "./styles.css";
 
@@ -129,6 +128,10 @@ function EmptyState({ clear }: { clear: () => void }) {
   return <div className="empty-state"><span className="empty-icon"><Icon name="filter" size={28} /></span><h3>No agents match your filters</h3><p>Try adjusting your search or status filters.</p><button type="button" className="secondary-button" onClick={clear}>Clear filters</button></div>;
 }
 
+function ConnectionError({ message, retry }: { message: string; retry: () => void }) {
+  return <div className="empty-state connection-error" role="alert"><span className="empty-icon"><Icon name="database" size={28} /></span><h3>Unable to connect to registry-server</h3><p>{message}</p><button type="button" className="secondary-button" onClick={retry}>Retry connection</button></div>;
+}
+
 function DetailsPanel({ agent, onClose }: { agent: RegisteredAgent; onClose: () => void }) {
   const [copied, setCopied] = useState("");
   const copy = async (value: string, label: string) => {
@@ -160,7 +163,6 @@ function DetailsPanel({ agent, onClose }: { agent: RegisteredAgent; onClose: () 
 export default function App() {
   const [agents, setAgents] = useState<RegisteredAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | AgentActivity>("all");
@@ -179,14 +181,11 @@ export default function App() {
     try {
       const page = await listAgents();
       setAgents(page.agents);
-      setDemoMode(false);
       setSelectedId((current) => current && page.agents.some((agent) => agent.id === current) ? current : page.agents[0]?.id ?? null);
-    } catch (loadError) {
-      const message = loadError instanceof RegistryApiError ? loadError.message : "Registry could not be reached";
-      setError(message);
-      setAgents(MOCK_AGENTS);
-      setDemoMode(true);
-      setSelectedId((current) => current ?? MOCK_AGENTS[0]?.id ?? null);
+    } catch {
+      setError("Make sure registry-server is running and reachable, then try again.");
+      setAgents([]);
+      setSelectedId(null);
     } finally {
       setLoading(false);
     }
@@ -197,9 +196,8 @@ export default function App() {
     if (!selectedId) { setDetail(null); return; }
     const local = agents.find((agent) => agent.id === selectedId);
     setDetail(local ?? null);
-    if (demoMode) return;
     void getAgent(selectedId).then(setDetail).catch(() => { /* list data is enough for the panel */ });
-  }, [selectedId, agents, demoMode]);
+  }, [selectedId, agents]);
 
   const filteredAgents = useMemo(() => agents.filter((agent) => {
     const instanceValues = agent.instances.flatMap((instance) => [
@@ -223,13 +221,11 @@ export default function App() {
     <Sidebar mobileOpen={mobileNav} onClose={() => setMobileNav(false)} />
     <main className="main-content">
       <header className="page-header"><button type="button" className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" size={22} /></button><div><h1>Agent Registry</h1><p>Discover logical A2A agents and inspect their active runtime instances.</p></div></header>
-      {demoMode && <div className="demo-banner" role="status"><Icon name="spark" size={17} /><span><strong>Demo data</strong> — the registry API is unavailable, so you’re viewing sample agents.</span><button type="button" onClick={() => void load()}>Retry connection</button></div>}
-      {error && !demoMode && <div className="error-banner" role="alert">{error}</div>}
       <section className="workspace" aria-label="Agent discovery">
         <div className="toolbar"><label className="search-field"><Icon name="search" size={19} /><span className="sr-only">Search agents</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents by name, id, or owner…" /></label><label className="status-select"><span>Status:</span><select value={status} onChange={(event) => setStatus(event.target.value as "all" | AgentActivity)}><option value="all">All</option><option value="active">Active</option><option value="idle">Idle</option></select></label><button type="button" className={`filter-button ${filterOpen || activeFilters ? "is-active" : ""}`} onClick={() => setFilterOpen((open) => !open)}><Icon name="filter" size={17} />More filters{activeFilters > 0 && <span className="filter-count">{activeFilters}</span>}</button><button type="button" className="refresh-button icon-button" aria-label="Refresh agents" onClick={() => void load()} disabled={loading}><Icon name="refresh" size={18} /></button></div>
         <FilterPanel open={filterOpen} skill={skill} tag={tag} capability={capability} protocol={protocol} setSkill={setSkill} setTag={setTag} setCapability={setCapability} setProtocol={setProtocol} clear={clearFilters} />
-        <div className="results-heading"><span>{loading ? "Loading agents…" : `${filteredAgents.length} ${filteredAgents.length === 1 ? "agent" : "agents"}`}</span>{(query || status !== "all" || activeFilters > 0) && <button type="button" className="clear-inline" onClick={clearFilters}>Clear filters</button>}</div>
-        {loading ? <div className="loading-list" aria-label="Loading agents">{Array.from({ length: 5 }).map((_, index) => <div className="skeleton-row" key={index}><span /><span /><span /><span /></div>)}</div> : filteredAgents.length === 0 ? <EmptyState clear={clearFilters} /> : <div className="agent-table" role="table" aria-label="Registered agents"><div className="table-head" role="row"><span>Agent name</span><span>Agent ID</span><span>Status</span><span>Instances</span><span>Owner</span><span>Last seen</span><span /></div>{filteredAgents.map((agent) => <button type="button" role="row" className={`agent-row ${selectedId === agent.id ? "is-selected" : ""}`} key={agent.id} onClick={() => setSelectedId(agent.id)}><span className="agent-name-cell"><AgentAvatar agent={agent} /><span><strong>{agent.name}</strong><small>{categoryFor(agent)}</small></span></span><span className="agent-id">{agent.id}</span><span><ActivityBadge activity={activityFor(agent)} /></span><span className="instance-count"><strong>{agent.instanceCount}</strong><small>{agent.instanceCount === 1 ? "instance" : "instances"}</small></span><span className="owner-cell">{ownerFor(agent)}</span><span className="last-seen">{formatRelative(agent.lastSeen)}</span><span className="row-arrow"><Icon name="chevron" size={18} /></span></button>)}</div>}
+        <div className="results-heading"><span>{loading ? "Loading agents…" : error ? "Registry unavailable" : `${filteredAgents.length} ${filteredAgents.length === 1 ? "agent" : "agents"}`}</span>{!error && (query || status !== "all" || activeFilters > 0) && <button type="button" className="clear-inline" onClick={clearFilters}>Clear filters</button>}</div>
+        {loading ? <div className="loading-list" aria-label="Loading agents">{Array.from({ length: 5 }).map((_, index) => <div className="skeleton-row" key={index}><span /><span /><span /><span /></div>)}</div> : error ? <ConnectionError message={error} retry={() => void load()} /> : filteredAgents.length === 0 ? <EmptyState clear={clearFilters} /> : <div className="agent-table" role="table" aria-label="Registered agents"><div className="table-head" role="row"><span>Agent name</span><span>Agent ID</span><span>Status</span><span>Instances</span><span>Owner</span><span>Last seen</span><span /></div>{filteredAgents.map((agent) => <button type="button" role="row" className={`agent-row ${selectedId === agent.id ? "is-selected" : ""}`} key={agent.id} onClick={() => setSelectedId(agent.id)}><span className="agent-name-cell"><AgentAvatar agent={agent} /><span><strong>{agent.name}</strong><small>{categoryFor(agent)}</small></span></span><span className="agent-id">{agent.id}</span><span><ActivityBadge activity={activityFor(agent)} /></span><span className="instance-count"><strong>{agent.instanceCount}</strong><small>{agent.instanceCount === 1 ? "instance" : "instances"}</small></span><span className="owner-cell">{ownerFor(agent)}</span><span className="last-seen">{formatRelative(agent.lastSeen)}</span><span className="row-arrow"><Icon name="chevron" size={18} /></span></button>)}</div>}
       </section>
     </main>
     {detail && <DetailsPanel agent={detail} onClose={() => setSelectedId(null)} />}
