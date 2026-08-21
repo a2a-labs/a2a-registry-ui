@@ -1,4 +1,4 @@
-import type { AgentPage, RegisteredAgent } from "./types";
+import type { AgentPage, RegisteredAgent, RegistryInfo } from "./types";
 
 const configuredBase = (import.meta.env.VITE_REGISTRY_API_URL as string | undefined)?.trim();
 export const API_BASE = (configuredBase ?? "").replace(/\/$/, "");
@@ -62,4 +62,8 @@ export async function listAgents(params?: {
 export async function getAgent(id: string): Promise<RegisteredAgent> {
   const response = await request<{ agent: RegisteredAgent }>(`/v1/agents/${encodeURIComponent(id)}`);
   return response.agent;
+}
+
+export async function getRegistryInfo(): Promise<RegistryInfo> {
+  return request<RegistryInfo>("/v1");
 }

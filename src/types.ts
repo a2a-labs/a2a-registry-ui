@@ -55,4 +55,15 @@ export interface AgentPage {
   revision: number;
 }
 
+export interface RegistryInfo {
+  name: string;
+  version: string;
+  apiVersion: string;
+  url: string;
+  status: "ready" | "not_ready" | string;
+  store: string;
+  documentation: string;
+  endpoints: Record<string, string>;
+}
+
 export type AgentActivity = "active" | "idle";

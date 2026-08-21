@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { getAgent, listAgents } from "./api";
-import type { AgentActivity, AgentCard, AgentInstance, RegisteredAgent } from "./types";
+import { getAgent, getRegistryInfo, listAgents } from "./api";
+import type { AgentActivity, AgentCard, AgentInstance, RegisteredAgent, RegistryInfo } from "./types";
 import "./styles.css";
 
 type IconName =
@@ -99,15 +99,28 @@ function ActivityBadge({ activity }: { activity: AgentActivity }) {
   return <span className={`activity-badge activity-${activity}`}><span className="activity-dot" />{label}</span>;
 }
 
-function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
+function Sidebar({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   return <>
-    <div className={`sidebar-backdrop ${mobileOpen ? "is-open" : ""}`} onClick={onClose} aria-hidden="true" />
-    <aside className={`sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="Main navigation">
-      <div className="sidebar-brand"><span className="brand-mark"><Icon name="terminal" size={21} /></span><span>A2A Registry</span></div>
-      <nav><button className="nav-item is-selected" type="button" onClick={onClose}><Icon name="agents" size={18} /><span>Agents</span></button></nav>
-      <div className="sidebar-version"><span>Registry API</span><strong>v0.2</strong></div>
+    <div className={`sidebar-backdrop ${expanded ? "is-open" : ""}`} onClick={onToggle} aria-hidden="true" />
+    <aside className={`sidebar ${expanded ? "is-expanded" : "is-mini"}`} aria-label="Main navigation">
+      <div className="sidebar-brand"><button type="button" className="brand-mark" aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"} aria-expanded={expanded} onClick={onToggle}><Icon name="terminal" size={21} /></button><span>A2A Registry</span></div>
+      <nav><button className="nav-item is-selected" type="button"><Icon name="agents" size={18} /><span>Agents</span></button></nav>
     </aside>
   </>;
+}
+
+function ServerStatusBar({ info }: { info: RegistryInfo | null }) {
+  const status = info?.status === "ready" ? "ready" : info ? "not ready" : "unavailable";
+  return <section className="server-status-bar" aria-label="Server information">
+    <div className="server-status-heading"><span className={`server-status-dot server-status-${status.replace(" ", "-")}`} />Server <strong>{status}</strong></div>
+    {info ? <dl className="server-status-facts">
+      <div><dt>URL</dt><dd title={info.url}>{info.url}</dd></div>
+      <div><dt>Version</dt><dd>{info.version}</dd></div>
+      <div><dt>API</dt><dd>{info.apiVersion}</dd></div>
+      <div><dt>Store</dt><dd>{info.store}</dd></div>
+    </dl> : <p className="server-status-empty">Server details unavailable</p>}
+    {info ? <a className="server-status-docs" href={info.documentation} target="_blank" rel="noreferrer">API documentation <Icon name="chevron" size={13} /></a> : null}
+  </section>;
 }
 
 function FilterPanel({ open, skill, tag, capability, protocol, setSkill, setTag, setCapability, setProtocol, clear }: {
@@ -173,7 +186,8 @@ export default function App() {
   const [protocol, setProtocol] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RegisteredAgent | null>(null);
-  const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 980px)").matches);
+  const [registryInfo, setRegistryInfo] = useState<RegistryInfo | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,6 +196,11 @@ export default function App() {
       const page = await listAgents();
       setAgents(page.agents);
       setSelectedId((current) => current && page.agents.some((agent) => agent.id === current) ? current : page.agents[0]?.id ?? null);
+      try {
+        setRegistryInfo(await getRegistryInfo());
+      } catch {
+        setRegistryInfo(null);
+      }
     } catch {
       setError("Make sure registry-server is running and reachable, then try again.");
       setAgents([]);
@@ -218,9 +237,9 @@ export default function App() {
   const clearFilters = () => { setQuery(""); setStatus("all"); setSkill(""); setTag(""); setCapability(""); setProtocol(""); };
   const activeFilters = [skill, tag, capability, protocol].filter(Boolean).length;
   return <div className={`app-shell ${detail ? "has-details" : ""}`}>
-    <Sidebar mobileOpen={mobileNav} onClose={() => setMobileNav(false)} />
+    <Sidebar expanded={sidebarExpanded} onToggle={() => setSidebarExpanded((expanded) => !expanded)} />
     <main className="main-content">
-      <header className="page-header"><button type="button" className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" size={22} /></button><div><h1>Agent Registry</h1><p>Discover logical A2A agents and inspect their active runtime instances.</p></div></header>
+      <ServerStatusBar info={registryInfo} />
       <section className="workspace" aria-label="Agent discovery">
         <div className="toolbar"><label className="search-field"><Icon name="search" size={19} /><span className="sr-only">Search agents</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search agents by name, id, or owner…" /></label><label className="status-select"><span>Status:</span><select value={status} onChange={(event) => setStatus(event.target.value as "all" | AgentActivity)}><option value="all">All</option><option value="active">Active</option><option value="idle">Idle</option></select></label><button type="button" className={`filter-button ${filterOpen || activeFilters ? "is-active" : ""}`} onClick={() => setFilterOpen((open) => !open)}><Icon name="filter" size={17} />More filters{activeFilters > 0 && <span className="filter-count">{activeFilters}</span>}</button><button type="button" className="refresh-button icon-button" aria-label="Refresh agents" onClick={() => void load()} disabled={loading}><Icon name="refresh" size={18} /></button></div>
         <FilterPanel open={filterOpen} skill={skill} tag={tag} capability={capability} protocol={protocol} setSkill={setSkill} setTag={setTag} setCapability={setCapability} setProtocol={setProtocol} clear={clearFilters} />
